@@ -1,0 +1,78 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use v5.10;
+use subs qw(randSign clampRating);
+
+use constant CLAMP_MIN        => 0;
+use constant CLAMP_MAX        => 100;
+use constant JSON_ITEM_FORMAT => '{"rating":%u,"timestamp":%u}' . "\n";
+use constant SQL_ITEM_FORMAT  => '(%u,%u)' . "\n";
+
+main(@ARGV);
+
+sub main
+{
+  if(scalar @_ == 5)
+  {
+    my ($format,$rounds,$iterations,$ratingSeed,$ratingSway) = @_;
+    sleep rand 3;
+    my $time = time - ($rounds * $iterations);
+    my @data;
+    my $printFormat;
+
+    if(lc $format eq 'json')
+    {
+      $printFormat = JSON_ITEM_FORMAT;
+    }elsif(lc $format eq 'sql')
+    {
+      $printFormat = SQL_ITEM_FORMAT;
+    }
+
+
+    foreach my $r (1..$rounds)
+    {
+      foreach my $i (1..$iterations)
+      {
+        srand $time++;
+        my $rating = $ratingSeed + (randSign(rand) * $ratingSway);
+
+        clampRating \$rating;
+        push @data,sprintf $printFormat,$rating,$time;
+      }
+    }
+
+    if(lc $format eq 'json')
+    {
+      print "[\n" . join(',',@data) . "]\n";
+    }else
+    {
+      print join(',',@data);
+    }
+  }else
+  {
+    say 'usage: ' . (substr $0,(index $0,'/') + 1) . '[json,sql] <rounds> <iterations> <startingRank> <variance>';
+  }
+}
+
+sub randSign
+{
+  my $num = shift or die 'expected 1 argument, got 0';
+  return $num * ($num >= .5 ? 1 : -1);
+}
+
+sub clampRating
+{
+  my $rating = shift or die 'expected 1 argument, got 0';
+
+  if($$rating > CLAMP_MAX)
+  {
+    $$rating = CLAMP_MAX;
+  }
+  
+  if($$rating < CLAMP_MIN)
+  {
+    $$rating = CLAMP_MIN;
+  }
+}

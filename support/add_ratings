@@ -1,0 +1,128 @@
+#!/usr/bin/env php
+
+<?php
+define('RATING_GENERATOR','/Volumes/Storage/projects/2014/shammel_lee/software/web_sites/cinegram/sandbox/support/rating_generator');
+define('MOVIE_COUNT',18);
+define('RATINGS_PER_MOVIE',1);
+define('MAX_RATINGS_LIMIT',90);
+define('RATING_SEED',50);
+define('RATING_SWAY',50);
+define('MAX_RATING',100);
+define('MIN_RATING',0);
+
+$mongo           = new MongoClient();
+$movieCollection = $mongo->cinegram->movies;
+$movies          = $movieCollection->find()->limit(18);
+$ratings         = Array();
+
+exec(sprintf('%s json %u %u %u %u',RATING_GENERATOR,RATINGS_PER_MOVIE,MOVIE_COUNT,RATING_SEED,RATING_SWAY),$ratings);
+$ratings = json_decode(join('',$ratings),true);
+
+foreach($ratings as &$rating)
+{
+  $rating['timestamp'] = new MongoDate($rating['timestamp']);
+}
+
+foreach($movies as $movie)
+{
+  $curRating  = array_splice($ratings,0,RATINGS_PER_MOVIE);
+  $ratingNums = ratingNumArray($movie['ratings']);
+  $avg        = ratingAverage($ratingNums);
+
+  $movieCollection->update(
+    ['_id' => $movie['_id']]
+    ,[
+      '$push' => [
+        'ratings' => [
+          '$each'   => $curRating
+          ,'$slice' => -(MAX_RATINGS_LIMIT)
+        ]
+      ]
+      ,'$set' => [
+        'ratingMeta' => [
+          'rank'     => round(rank($avg),1)
+          ,'average' => round($avg,1)
+          ,'high'    => high($ratingNums)
+          ,'low'     => low($ratingNums)
+        ]
+      ]
+    ]
+  );
+}
+
+function rank($average)
+{
+  if(is_numeric($average))
+  {
+    $rank = (MAX_RATING - $average) + 1;
+
+    return $rank > MAX_RATING ? MAX_RATING : $rank < MIN_RATING ? MIN_RATING : $rank;
+  }else
+  {
+    return MIN_RATING;
+  }
+}
+
+function ratingNumArray($ratings)
+{
+  if(is_array($ratings))
+  {
+    $ratingNums = Array();
+
+    foreach($ratings as $rating)
+    {
+      if(is_int($rating['rating']))
+      {
+        array_push($ratingNums,$rating['rating']);
+      }
+    }
+
+    return $ratingNums;
+  }else
+  {
+    return Array();
+  }
+}
+
+function ratingAverage($numberArray)
+{
+  if(is_array($numberArray))
+  {
+    $sum = 0;
+
+    foreach($numberArray as $v)
+    {
+      if(is_int($v))
+      {
+        $sum += $v;
+      }
+    }
+
+    return $sum > 0 ? $sum / count($numberArray) : 0;
+  }else
+  {
+    return 0;
+  }
+}
+
+function high($numArray)
+{
+  if(is_array($numArray) && count($numArray))
+  {
+    return max($numArray);
+  }else
+  {
+    return MIN_RATING;
+  }
+}
+
+function low($numArray)
+{
+  if(is_array($numArray) && count($numArray))
+  {
+    return min($numArray);
+  }else
+  {
+    return MIN_RATING;
+  }
+}
